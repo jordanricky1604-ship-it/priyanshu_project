@@ -1,0 +1,42 @@
+[project]
+name = "captcha-solver"
+version = "0.1.0"
+description = "Local CAPTCHA solver using ML models — no external APIs required"
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.45.0",
+    "faster-whisper>=1.0.3",
+    "easyocr>=1.7.2",
+    "open-clip-torch>=2.26.1",
+    "torch>=2.3.0",
+    "torchvision>=0.18.0",
+    "Pillow>=10.0.0",
+    "click>=8.1.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0.0",
+    "httpx>=0.27.0",
+    "numpy>=1.26.0",
+    "opencv-python-headless>=4.9.0",
+]
+
+[project.scripts]
+captcha-solver = "src.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-playwright>=0.5.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

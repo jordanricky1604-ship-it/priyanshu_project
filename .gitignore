@@ -1,0 +1,26 @@
+# Models
+models/*
+!models/.gitkeep
+
+# Browser profiles
+profiles/*
+!profiles/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+
+# IDEs
+.venv/
+venv/
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
