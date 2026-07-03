@@ -11,6 +11,8 @@ from playwright.async_api import Page, Frame
 from src.models import CaptchaChallenge, CaptchaSolution, CaptchaType
 from src.solvers.base import BaseSolver, SolverRegistry
 from src.behavior import human_mouse_move
+from src.utils.selectors import GeeTestSelectors
+from src.utils.retry import async_retry, PlaywrightError, PlaywrightTimeoutError
 
 logger = logging.getLogger("captcha_solver")
 
@@ -69,60 +71,57 @@ class GeeTestSolver(BaseSolver):
             await asyncio.sleep(1.0)
         return None
 
+    @async_retry(max_retries=2, exceptions=(PlaywrightError, PlaywrightTimeoutError))
     async def _solve_slider(self, page: Page, frame: Frame) -> Optional[str]:
-        try:
-            slider = frame.locator(".geetest_slider_button, .geetest_slider_knob")
-            await slider.wait_for(state="visible", timeout=10000)
-            box = await slider.bounding_box()
-            if not box:
-                return None
-
-            start_x = box["x"] + box["width"] / 2
-            start_y = box["y"] + box["height"] / 2
-
-            gap = await self._find_gap_position(page, frame)
-            if gap == 0:
-                gap = box["width"] * 4
-
-            await page.mouse.move(start_x, start_y)
-            await asyncio.sleep(random.uniform(0.1, 0.3))
-            await page.mouse.down()
-
-            end_x = start_x + gap
-            current_x = start_x
-            while current_x < end_x:
-                step = random.uniform(1, 5)
-                current_x = min(current_x + step, end_x)
-                current_y = start_y + random.uniform(-1, 1)
-                await page.mouse.move(current_x, current_y)
-                await asyncio.sleep(random.uniform(0.002, 0.015))
-
-            await asyncio.sleep(random.uniform(0.1, 0.3))
-            await page.mouse.up()
-            await asyncio.sleep(1.0)
-
-            token = await page.evaluate("""
-            (() => {
-                if (typeof ___grecaptcha_cfg !== 'undefined') return _grecaptcha_cfg;
-                const inputs = document.querySelectorAll('input[name*="geetest"], input[name*="validate"]');
-                for (const inp of inputs) {
-                    if (inp.value && inp.value.length > 10) return inp.value;
-                }
-                return null;
-            })()
-            """)
-
-            return str(token) if token else None
-        except Exception as e:
-            logger.error(f"geetest slider solve failed: {e}")
+        slider = frame.locator(GeeTestSelectors.SLIDER)
+        await slider.wait_for(state="visible", timeout=10000)
+        box = await slider.bounding_box()
+        if not box:
             return None
+
+        start_x = box["x"] + box["width"] / 2
+        start_y = box["y"] + box["height"] / 2
+
+        gap = await self._find_gap_position(page, frame)
+        if gap == 0:
+            gap = box["width"] * 4
+
+        await page.mouse.move(start_x, start_y)
+        await asyncio.sleep(random.uniform(0.1, 0.3))
+        await page.mouse.down()
+
+        end_x = start_x + gap
+        current_x = start_x
+        while current_x < end_x:
+            step = random.uniform(1, 5)
+            current_x = min(current_x + step, end_x)
+            current_y = start_y + random.uniform(-1, 1)
+            await page.mouse.move(current_x, current_y)
+            await asyncio.sleep(random.uniform(0.002, 0.015))
+
+        await asyncio.sleep(random.uniform(0.1, 0.3))
+        await page.mouse.up()
+        await asyncio.sleep(1.0)
+
+        token = await page.evaluate("""
+        (() => {
+            if (typeof ___grecaptcha_cfg !== 'undefined') return _grecaptcha_cfg;
+            const inputs = document.querySelectorAll('input[name*="geetest"], input[name*="validate"]');
+            for (const inp of inputs) {
+                if (inp.value && inp.value.length > 10) return inp.value;
+            }
+            return null;
+        })()
+        """)
+
+        return str(token) if token else None
 
     async def _find_gap_position(self, page: Page, frame: Frame) -> int:
         try:
-            bg_img = await frame.locator(".geetest_canvas_bg canvas, canvas.geetest_canvas_bg").get_attribute("src")
-            slice_img = await frame.locator(".geetest_canvas_slice canvas, canvas.geetest_canvas_slice").get_attribute("src")
+            bg_img = await frame.locator(GeeTestSelectors.CANVAS_BG).get_attribute("src")
+            slice_img = await frame.locator(GeeTestSelectors.CANVAS_SLICE).get_attribute("src")
             if not bg_img:
-                bg_element = frame.locator(".geetest_canvas_bg canvas, canvas.geetest_canvas_bg")
+                bg_element = frame.locator(GeeTestSelectors.CANVAS_BG)
                 bg_img = await bg_element.evaluate("el => el.toDataURL()")
 
             if bg_img and slice_img:

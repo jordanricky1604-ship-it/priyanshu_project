@@ -11,6 +11,8 @@ from playwright.async_api import Page, Frame
 from src.models import CaptchaChallenge, CaptchaSolution, CaptchaType
 from src.solvers.base import BaseSolver, SolverRegistry
 from src.behavior import human_click, human_mouse_move
+from src.utils.selectors import FunCaptchaSelectors
+from src.utils.retry import async_retry, PlaywrightError, PlaywrightTimeoutError
 
 logger = logging.getLogger("captcha_solver")
 
@@ -69,15 +71,29 @@ class FunCaptchaSolver(BaseSolver):
             await asyncio.sleep(1.0)
         return None
 
+    @async_retry(max_retries=2, exceptions=(PlaywrightError, PlaywrightTimeoutError))
+    async def _click_verify_btn(self, page: Page, frame: Frame) -> None:
+        verify_btn = frame.locator(FunCaptchaSelectors.SUBMIT_BUTTON)
+        if await verify_btn.count():
+            await human_click(page, verify_btn)
+            await asyncio.sleep(2.0)
+
+    @async_retry(max_retries=2, exceptions=(PlaywrightError, PlaywrightTimeoutError))
+    async def _click_image(self, page: Page, img: Any) -> None:
+        box = await img.bounding_box()
+        if box:
+            x = box["x"] + box["width"] / 2
+            y = box["y"] + box["height"] / 2
+            await human_mouse_move(page, x, y)
+            await asyncio.sleep(random.uniform(0.3, 0.8))
+            await page.mouse.click(x, y, delay=random.randint(50, 150))
+
     async def _solve_orientation(self, page: Page, frame: Frame) -> Optional[str]:
         for _ in range(5):
             try:
-                verify_btn = frame.locator("button[type='submit'], .button-submit")
-                if await verify_btn.count():
-                    await human_click(page, verify_btn)
-                    await asyncio.sleep(2.0)
-            except Exception:
-                pass
+                await self._click_verify_btn(page, frame)
+            except Exception as e:
+                logger.warning(f"Failed to click FunCaptcha verify: {e}")
 
             token = await page.evaluate("""
             (() => {
@@ -90,20 +106,14 @@ class FunCaptchaSolver(BaseSolver):
             if token and isinstance(token, str) and len(token) > 10:
                 return str(token)
 
-            images = frame.locator(".fc-image, .fc-image-wrapper img, img[src*='arkose']")
+            images = frame.locator(FunCaptchaSelectors.IMAGES)
             count = await images.count()
             for i in range(min(count, 3)):
                 try:
                     img = images.nth(i)
-                    box = await img.bounding_box()
-                    if box:
-                        x = box["x"] + box["width"] / 2
-                        y = box["y"] + box["height"] / 2
-                        await human_mouse_move(page, x, y)
-                        await asyncio.sleep(random.uniform(0.3, 0.8))
-                        await page.mouse.click(x, y, delay=random.randint(50, 150))
-                except Exception:
-                    pass
+                    await self._click_image(page, img)
+                except Exception as e:
+                    logger.warning(f"Failed to click FunCaptcha image: {e}")
 
             await asyncio.sleep(1.0)
 

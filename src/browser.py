@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import AsyncIterator, Optional
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
+from playwright_stealth import stealth
 
 from src.config import BrowserProfile, SolverConfig
 
@@ -24,11 +25,11 @@ async def _launch_browser(config: SolverConfig) -> Browser:
         args=[
             "--no-sandbox",
             "--disable-blink-features=AutomationControlled",
+            "--disable-features=OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,IsolateOrigins,site-per-process",
             "--disable-dev-shm-usage",
             "--disable-infobars",
             "--disable-setuid-sandbox",
             "--disable-web-security",
-            "--disable-features=IsolateOrigins,site-per-process",
             f"--window-size=1920,1080",
         ],
     )
@@ -59,6 +60,8 @@ async def create_context(
         "viewport": {"width": 1920, "height": 1080},
         "locale": "en-US",
         "timezone_id": "America/New_York",
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "ignore_https_errors": True,
     }
 
     if profile and profile.user_data_dir:
@@ -80,53 +83,6 @@ async def create_context(
 
 
 async def _apply_stealth(context: BrowserContext) -> None:
-    await context.add_init_script("""
-    delete Object.getPrototypeOf(navigator).webdriver;
-    Object.defineProperty(navigator, 'plugins', {
-        get: () => [1, 2, 3, 4, 5],
-    });
-    Object.defineProperty(navigator, 'languages', {
-        get: () => ['en-US', 'en'],
-    });
-    const originalQuery = window.navigator.permissions.query;
-    window.navigator.permissions.query = (parameters) => (
-        parameters.name === 'notifications' ?
-            Promise.resolve({state: Notification.permission}) :
-            originalQuery(parameters)
-    );
-    Object.defineProperty(navigator, 'webdriver', {
-        get: () => undefined,
-    });
-    """)
-
-    await context.add_init_script("""
-    const getParameter = WebGLRenderingContext.prototype.getParameter;
-    WebGLRenderingContext.prototype.getParameter = function(parameter) {
-        if (parameter === 37445) {
-            return 'Intel Inc.';
-        }
-        if (parameter === 37446) {
-            return 'Intel Iris OpenGL Engine';
-        }
-        return getParameter.call(this, parameter);
-    };
-    """)
-
-    await context.add_init_script("""
-    HTMLCanvasElement.prototype.toDataURL = (function(original) {
-        return function() {
-            const context = this.getContext('2d', {willReadFrequently: true});
-            if (context) {
-                const imageData = context.getImageData(0, 0, this.width, this.height);
-                const data = imageData.data;
-                for (let i = 0; i < data.length; i += 4) {
-                    if (i % 40 === 0) {
-                        data[i + 2] = (data[i + 2] + 1) % 256;
-                    }
-                }
-                context.putImageData(imageData, 0, 0);
-            }
-            return original.apply(this, arguments);
-        };
-    })(HTMLCanvasElement.prototype.toDataURL);
-    """)
+    # In playwright-stealth, the Stealth class allows injecting scripts into a context
+    stealth_config = stealth.Stealth()
+    await stealth_config.apply_stealth_async(context)

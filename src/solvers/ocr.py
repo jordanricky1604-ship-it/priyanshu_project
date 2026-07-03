@@ -8,6 +8,7 @@ import easyocr
 from src.models import CaptchaChallenge, CaptchaSolution, CaptchaType
 from src.solvers.base import BaseSolver, SolverRegistry
 from src.utils.image import decode_image, preprocess_for_ocr
+from src.utils.model_manager import ModelManager
 
 logger = logging.getLogger("captcha_solver")
 
@@ -15,17 +16,8 @@ logger = logging.getLogger("captcha_solver")
 class OCRSolver(BaseSolver):
     name = "ocr"
 
-    def __init__(self, languages: list[str] | None = None):
-        self._reader = None
-        self._languages = languages or ["en"]
-        self._initialized = False
-
-    def _init_reader(self) -> easyocr.Reader:
-        if not self._reader:
-            logger.info("loading EasyOCR (first use, may take a moment)...")
-            self._reader = easyocr.Reader(self._languages, gpu=True)
-            logger.info("EasyOCR ready")
-        return self._reader
+    def __init__(self, model_manager: ModelManager | None = None):
+        self.model_manager = model_manager or ModelManager()
 
     def can_solve(self, challenge: CaptchaChallenge) -> bool:
         return challenge.type == CaptchaType.IMAGE_CAPTCHA
@@ -34,7 +26,7 @@ class OCRSolver(BaseSolver):
         start = time.time()
         attempts = 0
         try:
-            reader = self._init_reader()
+            reader = self.model_manager.get_easyocr()
             img_data = challenge.extra.get("image_data", "")
             if not img_data:
                 return CaptchaSolution(

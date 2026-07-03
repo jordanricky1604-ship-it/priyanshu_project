@@ -11,35 +11,9 @@ import numpy as np
 
 from src.models import CaptchaChallenge, CaptchaSolution, CaptchaType
 from src.solvers.base import BaseSolver, SolverRegistry
+from src.utils.model_manager import ModelManager
 
 logger = logging.getLogger("captcha_solver")
-
-_WHISPER_MODEL = None
-
-
-def _get_model_path() -> str:
-    model_dir = os.path.join(os.path.dirname(__file__), "..", "..", "models")
-    return os.path.abspath(model_dir)
-
-
-def _get_whisper_model(model_size: str = "tiny.en", compute_type: str = "int8"):
-    global _WHISPER_MODEL
-    if _WHISPER_MODEL is None:
-        try:
-            from faster_whisper import WhisperModel
-
-            logger.info(f"loading faster-whisper model '{model_size}'...")
-            _WHISPER_MODEL = WhisperModel(
-                model_size,
-                device="cpu",
-                compute_type=compute_type,
-                download_root=_get_model_path(),
-            )
-            logger.info("faster-whisper ready")
-        except ImportError:
-            logger.error("faster-whisper not installed. Run: pip install faster-whisper")
-            raise
-    return _WHISPER_MODEL
 
 
 class AudioSolver(BaseSolver):
@@ -47,11 +21,9 @@ class AudioSolver(BaseSolver):
 
     def __init__(
         self,
-        model_size: str = "tiny.en",
-        compute_type: str = "int8",
+        model_manager: ModelManager | None = None,
     ):
-        self.model_size = model_size
-        self.compute_type = compute_type
+        self.model_manager = model_manager or ModelManager()
 
     def can_solve(self, challenge: CaptchaChallenge) -> bool:
         return challenge.type == CaptchaType.IMAGE_CAPTCHA and "audio_data" in challenge.extra
@@ -94,7 +66,7 @@ class AudioSolver(BaseSolver):
         import tempfile
         import os
 
-        model = _get_whisper_model(self.model_size, self.compute_type)
+        model = self.model_manager.get_whisper()
         logger.info(f"transcribing {len(audio_bytes)} bytes of audio...")
 
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
