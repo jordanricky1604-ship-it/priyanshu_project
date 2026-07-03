@@ -10,7 +10,7 @@ from playwright.async_api import Page, Frame
 
 from src.models import CaptchaChallenge, CaptchaSolution, CaptchaType
 from src.solvers.base import BaseSolver, SolverRegistry
-from src.behavior import human_mouse_move
+from src.behavior import human_mouse_move, human_drag
 from src.utils.selectors import GeeTestSelectors
 from src.utils.retry import async_retry, PlaywrightError, PlaywrightTimeoutError
 
@@ -86,21 +86,10 @@ class GeeTestSolver(BaseSolver):
         if gap == 0:
             gap = box["width"] * 4
 
-        await page.mouse.move(start_x, start_y)
-        await asyncio.sleep(random.uniform(0.1, 0.3))
-        await page.mouse.down()
-
         end_x = start_x + gap
-        current_x = start_x
-        while current_x < end_x:
-            step = random.uniform(1, 5)
-            current_x = min(current_x + step, end_x)
-            current_y = start_y + random.uniform(-1, 1)
-            await page.mouse.move(current_x, current_y)
-            await asyncio.sleep(random.uniform(0.002, 0.015))
-
-        await asyncio.sleep(random.uniform(0.1, 0.3))
-        await page.mouse.up()
+        
+        await human_drag(page, start_x, start_y, end_x, start_y, steps=random.randint(40, 60))
+        
         await asyncio.sleep(1.0)
 
         token = await page.evaluate("""

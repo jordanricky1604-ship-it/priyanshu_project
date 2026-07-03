@@ -20,3 +20,4 @@ class GeeTestSelectors:
 class FunCaptchaSelectors:
     SUBMIT_BUTTON = "button[type='submit'], .button-submit"
     IMAGES = ".fc-image, .fc-image-wrapper img, img[src*='arkose']"
+    PROMPT = "#game_header_text, .challenge-instructions, h2"

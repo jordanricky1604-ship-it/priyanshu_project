@@ -49,3 +49,6 @@ class CaptchaSolution:
     elapsed_ms: float = 0.0
     success: bool = False
     error: str = ""
+
+class RateLimitException(Exception):
+    pass

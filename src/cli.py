@@ -13,6 +13,7 @@ from src.models import CaptchaType
 from src.profiles import ProfileManager
 from src.router import StrategyRouter
 from src.browser import get_browser, close_browser
+from src.daemon import run_daemon
 
 
 def async_command(f: Callable[..., Coroutine[Any, Any, Any]]) -> Callable[..., Any]:
@@ -149,6 +150,11 @@ async def profiles_create(name: str, proxy: Optional[str]) -> None:
     pm = ProfileManager()
     profile = pm.create(name, proxy=proxy_cfg)
     click.echo(f"Created profile '{profile.name}' at {profile.user_data_dir}")
+@cli.command()
+@click.option("--host", default="127.0.0.1", help="Host to bind to")
+@click.option("--port", default=8000, help="Port to bind to")
+def daemon(host: str, port: int) -> None:
+    run_daemon(host, port)
 
 
 def main() -> None:

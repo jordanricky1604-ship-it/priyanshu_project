@@ -10,7 +10,7 @@ from typing import Optional
 
 from playwright.async_api import Page, Frame
 
-from src.models import CaptchaChallenge, CaptchaSolution, CaptchaType
+from src.models import CaptchaChallenge, CaptchaSolution, CaptchaType, RateLimitException
 from src.solvers.base import BaseSolver, SolverRegistry
 from src.solvers.audio import AudioSolver
 from src.solvers.image_classifier import ImageClassifierSolver
@@ -290,9 +290,8 @@ class BrowserTokenSolver(BaseSolver):
                 logger.info("switched to audio challenge")
                 await asyncio.sleep(3.0)
             if "Try again later" in body_text:
-                logger.warning("rate limited by Google, waiting 10s before retry")
-                await asyncio.sleep(10.0)
-                return None
+                logger.warning("rate limited by Google (403), throwing RateLimitException")
+                raise RateLimitException("Google rate limit hit (Try again later)")
 
             play_btn = frame.locator(RecaptchaSelectors.PLAY_BUTTON).first
             await play_btn.click(timeout=8000, force=True)

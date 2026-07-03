@@ -58,6 +58,7 @@ class SolverConfig(BaseModel):
     clip_model_name: str = "ViT-B-32"
     max_retries: int = 3
     retry_delay_ms: int = 2000
+    proxies: list[ProxyConfig] = []
     profiles_dir: str = str(DEFAULT_PROFILES_DIR)
     models_dir: str = str(DEFAULT_MODELS_DIR)
 

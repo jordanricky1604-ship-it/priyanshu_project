@@ -52,6 +52,43 @@ async def human_mouse_move(
         await asyncio.sleep(random.uniform(0.002, 0.015))
 
 
+async def human_drag(
+    page: Page, start_x: float, start_y: float, end_x: float, end_y: float, steps: int = 40
+) -> None:
+    # 1. Move to start
+    await human_mouse_move(page, start_x, start_y, steps=20)
+    await asyncio.sleep(random.uniform(0.1, 0.3))
+    
+    # 2. Mouse down
+    await page.mouse.down()
+    await asyncio.sleep(random.uniform(0.05, 0.15))
+    
+    # 3. Add an overshoot to end_x to simulate human error and correction
+    overshoot_x = end_x + random.uniform(5, 20)
+    curve_to_overshoot = _bezier_curve((start_x, start_y), (overshoot_x, end_y + random.uniform(-2, 2)), steps)
+    
+    for idx, (x, y) in enumerate(curve_to_overshoot):
+        await page.mouse.move(x, y)
+        # Easing: move faster in the middle, slower at the edges
+        progress = idx / steps
+        if progress < 0.2 or progress > 0.8:
+            await asyncio.sleep(random.uniform(0.015, 0.03))
+        else:
+            await asyncio.sleep(random.uniform(0.002, 0.01))
+            
+    await asyncio.sleep(random.uniform(0.05, 0.2))
+    
+    # 4. Correct back to end_x
+    curve_to_end = _bezier_curve((overshoot_x, end_y), (end_x, end_y), 10)
+    for x, y in curve_to_end:
+        await page.mouse.move(x, y)
+        await asyncio.sleep(random.uniform(0.01, 0.03))
+        
+    # 5. Mouse up
+    await asyncio.sleep(random.uniform(0.1, 0.3))
+    await page.mouse.up()
+
+
 async def human_click(
     page: Page, selector: str | Locator, delay_before_ms: int = 300
 ) -> None:
