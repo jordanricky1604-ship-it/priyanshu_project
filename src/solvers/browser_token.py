@@ -130,15 +130,25 @@ class BrowserTokenSolver(BaseSolver):
         logger.info("challenge bframe found, solving...")
 
         for audio_round in range(5):
+            # Audio-First Logic
+            audio_btn = bframe.locator(RecaptchaSelectors.AUDIO_BUTTON).first
+            try:
+                if await audio_btn.is_visible(timeout=1500):
+                    logger.info("reCAPTCHA audio button found, prioritizing audio method...")
+                    await self._switch_to_audio(bframe)
+            except Exception:
+                pass
+
             body_text = await bframe.locator("body").inner_text()
+            # If we are STILL on an image challenge (audio switch failed or missing)
             if "Select all" in body_text or "Click verify" in body_text:
-                if not await self._switch_to_audio(bframe):
-                    await self._solve_image_challenge(bframe, self.page)
-                    await asyncio.sleep(2.0)
-                    token = await self._extract_recaptcha_response(self.page)
-                    if token:
-                        return token
-                    continue
+                logger.info("Falling back to reCAPTCHA image challenge")
+                await self._solve_image_challenge(bframe, self.page)
+                await asyncio.sleep(2.0)
+                token = await self._extract_recaptcha_response(self.page)
+                if token:
+                    return token
+                continue
 
             answer = await self._solve_audio_challenge(bframe)
             if not answer:
@@ -182,6 +192,26 @@ class BrowserTokenSolver(BaseSolver):
         if token:
             return token
 
+        # Audio-First Logic:
+        audio_btn = hcaptcha_frame.locator(RecaptchaSelectors.AUDIO_BUTTON).first
+        try:
+            if await audio_btn.is_visible(timeout=3000):
+                logger.info("hCaptcha audio button found, prioritizing audio method...")
+                await audio_btn.click(force=True)
+                await asyncio.sleep(2.0)
+                
+                answer = await self._solve_audio_challenge(hcaptcha_frame)
+                if answer:
+                    await self._type_audio_answer(hcaptcha_frame, answer)
+                    await self._click_verify(hcaptcha_frame)
+                    await asyncio.sleep(2.0)
+                    token = await self._extract_hcaptcha_response(self.page)
+                    if token:
+                        return token
+        except Exception as e:
+            logger.info(f"hCaptcha audio switch/solve failed, falling back to image: {e}")
+
+        logger.info("Falling back to hCaptcha image challenge")
         await self._solve_image_challenge(hcaptcha_frame, self.page)
         await asyncio.sleep(2.0)
         return await self._extract_hcaptcha_response(self.page)
