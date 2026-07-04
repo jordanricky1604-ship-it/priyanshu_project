@@ -19,34 +19,40 @@ class SolveRequest(BaseModel):
     site_key: str | None = None
     extra: dict | None = None
 
-router = None
-browser_page = None
+router: StrategyRouter | None = None
 current_proxy_index = 0
 
-async def rotate_proxy():
-    global browser_page, current_proxy_index
+async def rotate_proxy(profile_name: str = "default"):
+    global current_proxy_index
     config = get_config()
     proxies = config.solver.proxies
     
-    logger.info("Rotating proxy due to rate limit...")
-    await close_browser()
-    
     if proxies:
         current_proxy_index = (current_proxy_index + 1) % len(proxies)
-        new_proxy = proxies[current_proxy_index].as_playwright()
-        logger.info(f"Switched to proxy: {new_proxy['server'] if new_proxy else 'None'}")
-        browser_page = await get_browser(proxy=new_proxy)
+        new_proxy = proxies[current_proxy_index]
+        logger.info(f"Rotating proxy to: {new_proxy.server}")
+        if router:
+            profile = router.profiles.get_or_create(profile_name)
+            profile.proxy = new_proxy
+            router.profiles.save(profile)
     else:
-        logger.warning("No proxies configured in solver.proxies. Restarting browser with no proxy.")
-        browser_page = await get_browser()
+        logger.warning("No proxies configured. Proxy rotation skipped.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global router, browser_page
+    global router
     logger.info("Initializing persistent daemon state...")
-    router = StrategyRouter()
-    browser_page = await get_browser()
+    config = get_config()
+    browser = await get_browser(config.solver)
+    router = StrategyRouter(config.solver, browser)
+    
+    # Initialize first proxy if available
+    if config.solver.proxies:
+        profile = router.profiles.get_or_create("default")
+        profile.proxy = config.solver.proxies[current_proxy_index]
+        router.profiles.save(profile)
+
     yield
     logger.info("Shutting down persistent daemon state...")
     await close_browser()
@@ -55,44 +61,34 @@ app = FastAPI(title="Captcha Solver Daemon", lifespan=lifespan)
 
 @app.post("/solve", response_model=CaptchaSolution)
 async def solve_captcha(req: SolveRequest):
-    global router, browser_page
-    if not router or not browser_page:
+    global router
+    if not router:
         raise HTTPException(status_code=503, detail="Daemon not fully initialized")
 
     logger.info(f"Received solve request for {req.url} ({req.captcha_type})")
     
-    # We navigate to the URL before solving
     try:
-        await browser_page.goto(req.url, wait_until="networkidle")
-    except Exception as e:
-        logger.error(f"Failed to navigate to {req.url}: {e}")
-        raise HTTPException(status_code=400, detail=f"Failed to navigate: {e}")
-
-    extra = req.extra or {}
-    extra["page"] = browser_page
-
-    challenge = CaptchaChallenge(
-        type=req.captcha_type,
-        url=req.url,
-        site_key=req.site_key,
-        extra=extra
-    )
-
-    try:
-        solution = await router.route(challenge)
+        solution = await router.solve(
+            page_url=req.url,
+            profile_name="default",
+            force_type=req.captcha_type
+        )
+        # If it failed due to RateLimitException (which isn't caught if router.solve catches it?)
+        # Let's check if the solution error contains RateLimitException.
+        # Actually StrategyRouter catches all exceptions and returns a CaptchaSolution(success=False, error=str(e))
+        if not solution.success and "RateLimitException" in str(solution.error):
+            logger.warning("Rate limit hit! Rotating proxy and retrying...")
+            await rotate_proxy("default")
+            
+            # Retry once after rotation
+            solution = await router.solve(
+                page_url=req.url,
+                profile_name="default",
+                force_type=req.captcha_type
+            )
+            
         return solution
-    except RateLimitException as e:
-        logger.warning(f"Rate limit hit! Rotating proxy and retrying... {e}")
-        await rotate_proxy()
-        # Retry once after rotation
-        try:
-            extra["page"] = browser_page
-            await browser_page.goto(req.url, wait_until="networkidle")
-            solution = await router.route(challenge)
-            return solution
-        except Exception as e2:
-            logger.error(f"Solve failed after proxy rotation: {e2}")
-            raise HTTPException(status_code=500, detail=str(e2))
+        
     except Exception as e:
         logger.error(f"Solve failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
