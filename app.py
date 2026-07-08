@@ -17,7 +17,7 @@ URLS = [
     ("Click objects", "https://2captcha.com/demo/clickcaptcha"),
     ("Rotate image", "https://2captcha.com/demo/rotatecaptcha"),
     ("Slider", "https://www.geetest.com/en/adaptive-captcha-demo"),
-    ("Multiple Geetest", "https://gt4.geetest.com/demov4/index-en.html"),
+    ("Multiple Geetest", "https://gt4.geetest.com/demov4/more-float-en.html"),
     ("KeyCAPTCHA", "https://2captcha.com/demo/keycaptcha"),
     ("Turnstile", "https://2captcha.com/demo/cloudflare-turnstile"),
     ("reCAPTCHA demo appspot", "https://recaptcha-demo.appspot.com/"),

@@ -148,7 +148,7 @@ class BrowserImageSolver(BaseSolver):
             
             # 6. Verify result if on a known demo page
             try:
-                submit_btn = page.locator("button[type='submit'], input[type='button'][value*='Check' i], button:has-text('Check')").first
+                submit_btn = page.locator("button[type='submit'], input[type='submit'], input[type='button'][value*='Check' i], input[type='button'][value*='Validate' i], button:has-text('Check'), button:has-text('Validate')").first
                 if await submit_btn.is_visible(timeout=1000):
                     await submit_btn.click()
                     await asyncio.sleep(2.0)
