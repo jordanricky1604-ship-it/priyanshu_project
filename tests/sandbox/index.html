@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sandbox Captcha Test</title>
+</head>
+<body>
+    <h1>Sandbox Captcha Host</h1>
+    <div class="g-recaptcha">
+        <!-- The solver looks for iframes with recaptcha/api2/anchor and bframe in their url -->
+        <iframe src="/recaptcha/api2/anchor.html" title="reCAPTCHA" width="304" height="78" frameborder="0"></iframe>
+    </div>
+    <!-- We need a textarea for the token to be extracted -->
+    <textarea id="g-recaptcha-response" name="g-recaptcha-response" class="g-recaptcha-response" style="width: 250px; height: 40px; border: 1px solid #ccc; margin: 10px 25px; padding: 0px; resize: none;"></textarea>
+    
+    <!-- This iframe holds the challenge, initially hidden or just present -->
+    <iframe src="/recaptcha/api2/bframe.html" title="recaptcha challenge expires in two minutes" frameborder="0" scrolling="no" style="width: 400px; height: 580px;"></iframe>
+</body>
+</html>

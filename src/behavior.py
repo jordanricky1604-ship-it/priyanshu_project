@@ -103,7 +103,9 @@ async def human_click(
         target_y = box["y"] + box["height"] * random.uniform(0.3, 0.7)
         await human_mouse_move(page, target_x, target_y)
         await asyncio.sleep(random.uniform(0.05, 0.2))
-        await page.mouse.click(target_x, target_y, delay=random.randint(50, 150))
+        await page.mouse.down()
+        await asyncio.sleep(random.uniform(0.05, 0.15)) # Human click delay
+        await page.mouse.up()
     else:
         await locator.click(delay=random.randint(100, 300))
 
@@ -125,7 +127,12 @@ async def human_type(
 async def random_scroll(page: Page, count: int = 3) -> None:
     for _ in range(count):
         scroll_y = random.randint(100, 500)
-        await page.evaluate(f"window.scrollBy(0, {scroll_y})")
+        # Scroll in small human-like increments
+        steps = random.randint(3, 8)
+        step_amount = scroll_y / steps
+        for _ in range(steps):
+            await page.mouse.wheel(0, step_amount)
+            await asyncio.sleep(random.uniform(0.02, 0.08))
         await asyncio.sleep(random.uniform(0.3, 1.0))
 
 

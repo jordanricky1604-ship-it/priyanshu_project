@@ -62,6 +62,10 @@ class SolverConfig(BaseModel):
     profiles_dir: str = str(DEFAULT_PROFILES_DIR)
     models_dir: str = str(DEFAULT_MODELS_DIR)
 
+    model_config = {
+        "extra": "allow"
+    }
+
 
 class AppConfig(BaseModel):
     solver: SolverConfig = Field(default_factory=SolverConfig)

@@ -13,9 +13,9 @@ class RecaptchaSelectors:
     CHALLENGE_FRAME = "#recaptcha-challenge, .rc-imageselect"
 
 class GeeTestSelectors:
-    SLIDER = ".geetest_slider_button, .geetest_slider_knob"
-    CANVAS_BG = ".geetest_canvas_bg canvas, canvas.geetest_canvas_bg"
-    CANVAS_SLICE = ".geetest_canvas_slice canvas, canvas.geetest_canvas_slice"
+    SLIDER = ".geetest_slider_button, .geetest_slider_knob, .geetest_slider .geetest_btn"
+    CANVAS_BG = ".geetest_canvas_bg canvas, canvas.geetest_canvas_bg, .geetest_bg"
+    CANVAS_SLICE = ".geetest_canvas_slice canvas, canvas.geetest_canvas_slice, .geetest_slice_bg"
 
 class FunCaptchaSelectors:
     SUBMIT_BUTTON = "button[type='submit'], .button-submit"

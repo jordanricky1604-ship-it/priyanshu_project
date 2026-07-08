@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captcha Solver Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    
+    <div class="container glass-panel">
+        <header>
+            <h1><span class="gradient-text">Antigravity</span> Captcha Solver</h1>
+            <p>Live Dashboard & Testing Interface</p>
+        </header>
+
+        <main>
+            <form id="solve-form">
+                <div class="input-group">
+                    <label for="url">Target URL</label>
+                    <input type="url" id="url" name="url" placeholder="https://example.com" value="http://localhost:8080/index.html" required>
+                </div>
+
+                <div class="input-group">
+                    <label for="captcha_type">Captcha Type</label>
+                    <div class="select-wrapper">
+                        <select id="captcha_type" name="captcha_type">
+                            <option value="1">UNKNOWN (Auto-detect)</option>
+                            <option value="3" selected>RECAPTCHA_V2</option>
+                            <option value="7">HCAPTCHA</option>
+                            <option value="9">TURNSTILE</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="toggle-group">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="visible_browser" name="visible_browser" checked>
+                        <span class="slider round"></span>
+                    </label>
+                    <span class="toggle-label">Show Browser in Foreground</span>
+                </div>
+
+                <button type="submit" id="submit-btn">
+                    <span class="btn-text">Initiate Solve</span>
+                    <span class="loader hidden"></span>
+                </button>
+            </form>
+
+            <div id="results-panel" class="glass-panel inner-panel hidden">
+                <h2>Results</h2>
+                <div class="result-row">
+                    <span class="label">Status:</span>
+                    <span id="res-status" class="value badge success">Solved</span>
+                </div>
+                <div class="result-row">
+                    <span class="label">Latency:</span>
+                    <span id="res-latency" class="value">--</span>
+                </div>
+                <div class="result-row">
+                    <span class="label">Token:</span>
+                </div>
+                <div class="token-box">
+                    <code id="res-token">...</code>
+                    <button id="copy-btn" title="Copy to clipboard">
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div id="error-box" class="error-box hidden"></div>
+            </div>
+            
+            <div class="metrics-link">
+                <a href="/metrics" target="_blank">View Prometheus Metrics &rarr;</a>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

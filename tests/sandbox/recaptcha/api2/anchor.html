@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>reCAPTCHA</title>
+</head>
+<body>
+    <div id="recaptcha-anchor" class="recaptcha-checkbox">
+        <div class="recaptcha-checkbox-border"></div>
+        <div class="recaptcha-checkbox-checkmark">Checkbox</div>
+    </div>
+    <script>
+        document.querySelector('#recaptcha-anchor').addEventListener('click', function() {
+            // Usually this communicates with the parent to open the bframe
+            console.log("Checkbox clicked in sandbox");
+        });
+    </script>
+</body>
+</html>

@@ -8,6 +8,7 @@ from typing import Optional
 class CaptchaType(Enum):
     UNKNOWN = auto()
     IMAGE_CAPTCHA = auto()
+    AUDIO_CAPTCHA = auto()
     RECAPTCHA_V2 = auto()
     RECAPTCHA_V2_INVISIBLE = auto()
     RECAPTCHA_V3 = auto()
@@ -22,6 +23,10 @@ class CaptchaType(Enum):
     AWS_WAF = auto()
     MT_CAPTCHA = auto()
     DATADOME = auto()
+    TEXT_QUESTION = auto()
+    CLICK_OBJECTS = auto()
+    ROTATE_IMAGE = auto()
+    KEY_CAPTCHA = auto()
 
 
 @dataclass
@@ -43,6 +48,7 @@ class CaptchaSolution:
     token: str = ""
     user_agent: str = ""
     cookies: dict = field(default_factory=dict)
+    image_bytes: Optional[bytes] = None
     extra: dict = field(default_factory=dict)
     solved_via: str = ""
     attempts: int = 0

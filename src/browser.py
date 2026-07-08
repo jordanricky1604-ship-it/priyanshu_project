@@ -24,13 +24,9 @@ async def _launch_browser(config: SolverConfig) -> Browser:
         headless=config.browser_headless,
         args=[
             "--no-sandbox",
-            "--disable-blink-features=AutomationControlled",
-            "--disable-features=OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,IsolateOrigins,site-per-process",
-            "--disable-dev-shm-usage",
-            "--disable-infobars",
             "--disable-setuid-sandbox",
-            "--disable-web-security",
-            f"--window-size=1920,1080",
+            "--disable-blink-features=AutomationControlled",
+            "--start-maximized",
         ],
     )
     return browser
@@ -60,7 +56,9 @@ async def create_context(
         "viewport": {"width": 1920, "height": 1080},
         "locale": "en-US",
         "timezone_id": "America/New_York",
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "geolocation": {"longitude": -74.0060, "latitude": 40.7128}, # NYC
+        "permissions": ["geolocation", "notifications"],
+        "color_scheme": "dark",
         "ignore_https_errors": True,
     }
 
@@ -84,5 +82,6 @@ async def create_context(
 
 async def _apply_stealth(context: BrowserContext) -> None:
     # In playwright-stealth, the Stealth class allows injecting scripts into a context
+    # Let stealth automatically generate consistent UA and sec-ch-ua headers
     stealth_config = stealth.Stealth()
     await stealth_config.apply_stealth_async(context)

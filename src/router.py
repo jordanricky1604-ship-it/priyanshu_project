@@ -44,8 +44,17 @@ class StrategyRouter:
 
             try:
                 await self._prewarm_page(page, page_url)
-                await page.goto(page_url, wait_until="domcontentloaded", timeout=30000)
+                try:
+                    await page.goto(page_url, wait_until="domcontentloaded", timeout=30000)
+                except Exception as goto_err:
+                    logger.warning(f"page.goto timeout or error: {goto_err}")
                 await asyncio.sleep(3.0)
+
+                # Capture screenshot for the UI
+                try:
+                    screenshot_bytes = await page.screenshot(type='jpeg', quality=80)
+                except Exception:
+                    screenshot_bytes = None
 
                 if force_type:
                     challenge = CaptchaChallenge(
@@ -58,11 +67,14 @@ class StrategyRouter:
                     logger.info(f"detected captcha type: {challenge.type.name}")
 
                 if challenge.type == CaptchaType.UNKNOWN:
-                    return CaptchaSolution(
-                        type=CaptchaType.UNKNOWN,
+                    sol = CaptchaSolution(
+                        type=challenge.type,
                         success=False,
-                        error="no captcha detected on page",
+                        token="",
+                        elapsed_ms=0
                     )
+                    sol.image_bytes = screenshot_bytes
+                    return sol
 
                 solver = SolverRegistry.find(challenge)
                 if not solver:
@@ -76,6 +88,28 @@ class StrategyRouter:
                     else:
                         challenge.extra["page"] = page
                         solution = await solver.solve(challenge)
+
+                if screenshot_bytes and not solution.image_bytes:
+                    solution.image_bytes = screenshot_bytes
+
+                if solution.success:
+                    try:
+                        # Try to click a generic submit button on the demo page to show the final result screen
+                        submit_btn = page.locator("button[type='submit'], button:has-text('Check'), button:has-text('Submit'), button:has-text('Verify'), input[type='submit']").first
+                        if await submit_btn.is_visible(timeout=1000):
+                            await submit_btn.click()
+                            await asyncio.sleep(2.0)
+                    except Exception:
+                        pass
+
+                if solution.success:
+                    try:
+                        # Capture cookies to return to caller
+                        raw_cookies = await context.cookies()
+                        cookie_dict = {c['name']: c['value'] for c in raw_cookies}
+                        solution.cookies = cookie_dict
+                    except Exception as e:
+                        logger.error(f"failed to extract cookies: {e}")
 
                 self.profiles.record_use(profile_name, solution.success)
                 return solution

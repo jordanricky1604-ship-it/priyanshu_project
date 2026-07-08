@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>challenge</title>
+</head>
+<body>
+    <div id="recaptcha-challenge" class="rc-imageselect">
+        <div class="rc-imageselect-desc-wrapper">
+            <div class="rc-imageselect-desc-no-canonical">
+                Select all crosswalks
+            </div>
+        </div>
+        
+        <div id="rc-imageselect-target">
+        <table class="rc-imageselect-table-33">
+            <tr>
+                <td class="rc-imageselect-tile">Tile 1</td>
+                <td class="rc-imageselect-tile">Tile 2</td>
+                <td class="rc-imageselect-tile">Tile 3</td>
+            </tr>
+            <tr>
+                <td class="rc-imageselect-tile">Tile 4</td>
+                <td class="rc-imageselect-tile">Tile 5</td>
+                <td class="rc-imageselect-tile">Tile 6</td>
+            </tr>
+            <tr>
+                <td class="rc-imageselect-tile">Tile 7</td>
+                <td class="rc-imageselect-tile">Tile 8</td>
+                <td class="rc-imageselect-tile">Tile 9</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="rc-footer">
+        <button id="recaptcha-audio-button" class="rc-button-audio">Audio</button>
+        <button id="recaptcha-verify-button" class="rc-button-default">Verify</button>
+    </div>
+
+    <!-- Hidden audio panel to simulate audio fallback -->
+    <div id="rc-audio" style="display:none;">
+        <button class="rc-button-default rc-button-audio-play">PLAY</button>
+        <audio id="audio-source" src="/audio.mp3"></audio>
+        <input type="text" id="audio-response" />
+    </div>
+
+    <script>
+        document.getElementById('recaptcha-audio-button').addEventListener('click', function() {
+            document.getElementById('rc-imageselect-target').style.display = 'none';
+            document.querySelector('.rc-imageselect-desc-wrapper').style.display = 'none';
+            document.getElementById('rc-audio').style.display = 'block';
+        });
+
+        document.getElementById('recaptcha-verify-button').addEventListener('click', function() {
+            // Communicate token to parent
+            if (window.parent && window.parent.document) {
+                var responseInput = window.parent.document.getElementById('g-recaptcha-response');
+                if (responseInput) {
+                    responseInput.value = "sandbox-success-token";
+                }
+            }
+        });
+    </script>
+    </div>
+</body>
+</html>

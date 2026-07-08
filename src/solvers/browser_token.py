@@ -85,6 +85,15 @@ class BrowserTokenSolver(BaseSolver):
                     logger.info(f"retrying in {delay:.1f}s (attempt {attempt + 2}/{self.config.max_retries})")
                     await asyncio.sleep(delay)
 
+            except RateLimitException as e:
+                logger.warning(f"attempt {attempt + 1} hit rate limit: {e}. Aborting retries for this proxy.")
+                return CaptchaSolution(
+                    type=challenge.type,
+                    success=False,
+                    error=f"RateLimitException: {e}",
+                    attempts=attempts,
+                    elapsed_ms=(time.time() - start) * 1000,
+                )
             except Exception as e:
                 logger.warning(f"attempt {attempt + 1} failed: {e}")
 
@@ -99,7 +108,7 @@ class BrowserTokenSolver(BaseSolver):
 
     async def _find_recaptcha_bframe(self) -> Optional[Frame]:
         for frame in self.page.frames:
-            if "recaptcha/api2/bframe" in frame.url:
+            if "recaptcha/api2/bframe" in frame.url or "recaptcha/enterprise/bframe" in frame.url:
                 return frame
         return None
 
@@ -143,6 +152,8 @@ class BrowserTokenSolver(BaseSolver):
             # If we are STILL on an image challenge (audio switch failed or missing)
             if "Select all" in body_text or "Click verify" in body_text:
                 logger.info("Falling back to reCAPTCHA image challenge")
+                from src.metrics import CAPTCHA_FALLBACKS_TOTAL
+                CAPTCHA_FALLBACKS_TOTAL.labels(captcha_type=CaptchaType.RECAPTCHA_V2.value, fallback_reason="audio_unavailable_or_failed").inc()
                 await self._solve_image_challenge(bframe, self.page)
                 await asyncio.sleep(2.0)
                 token = await self._extract_recaptcha_response(self.page)
@@ -150,9 +161,23 @@ class BrowserTokenSolver(BaseSolver):
                     return token
                 continue
 
-            answer = await self._solve_audio_challenge(bframe)
-            if not answer:
-                break
+            try:
+                answer = await self._solve_audio_challenge(bframe)
+                if not answer:
+                    logger.warning("audio challenge returned no answer, falling back to image...")
+                    await self._switch_to_image(bframe)
+                    await self._solve_image_challenge(bframe, self.page)
+                    await asyncio.sleep(2.0)
+                    continue
+            except Exception as e:
+                logger.warning(f"audio challenge failed: {e}")
+                logger.info("Falling back to reCAPTCHA image challenge")
+                from src.metrics import CAPTCHA_FALLBACKS_TOTAL
+                CAPTCHA_FALLBACKS_TOTAL.labels(captcha_type=CaptchaType.RECAPTCHA_V2.value, fallback_reason="audio_error").inc()
+                await self._switch_to_image(bframe)
+                await self._solve_image_challenge(bframe, self.page)
+                await asyncio.sleep(2.0)
+                continue
 
             await self._type_audio_answer(bframe, answer)
             await self._click_verify(bframe)
@@ -177,6 +202,19 @@ class BrowserTokenSolver(BaseSolver):
         await asyncio.sleep(3.0)
         return True
 
+    @async_retry(max_retries=2, exceptions=(PlaywrightError, PlaywrightTimeoutError))
+    async def _switch_to_image(self, frame: Frame) -> bool:
+        try:
+            image_btn = frame.locator("#recaptcha-image-button, button[title*='image'], button[title*='Get a visual challenge'], .button-image").first
+            if await image_btn.is_visible(timeout=2000):
+                await image_btn.click(force=True)
+                logger.info("switched back to image challenge")
+                await asyncio.sleep(2.0)
+                return True
+        except Exception as e:
+            logger.warning(f"failed to switch to image challenge: {e}")
+        return False
+
     async def _solve_hcaptcha(self, challenge: CaptchaChallenge) -> Optional[str]:
         await human_prebrowse(self.page)
 
@@ -197,7 +235,7 @@ class BrowserTokenSolver(BaseSolver):
         try:
             if await audio_btn.is_visible(timeout=3000):
                 logger.info("hCaptcha audio button found, prioritizing audio method...")
-                await audio_btn.click(force=True)
+                await audio_btn.click(force=True, timeout=5000)
                 await asyncio.sleep(2.0)
                 
                 answer = await self._solve_audio_challenge(hcaptcha_frame)
@@ -220,7 +258,23 @@ class BrowserTokenSolver(BaseSolver):
         await human_prebrowse(self.page)
         await asyncio.sleep(2.0)
 
-        for _ in range(10):
+        for _ in range(15):
+            try:
+                turnstile_frame = None
+                for frame in self.page.frames:
+                    if 'turnstile' in frame.url and 'challenges' in frame.url:
+                        turnstile_frame = frame
+                        break
+                
+                if turnstile_frame:
+                    checkbox = turnstile_frame.locator('input[type="checkbox"]')
+                    if await checkbox.count() > 0:
+                        await checkbox.first.click(force=True)
+                    else:
+                        await turnstile_frame.locator('body').click(force=True)
+            except Exception:
+                pass
+
             token = await self._extract_turnstile_response(self.page)
             if token:
                 return token
@@ -246,19 +300,22 @@ class BrowserTokenSolver(BaseSolver):
 
     @async_retry(max_retries=3, exceptions=(PlaywrightError, PlaywrightTimeoutError))
     async def _click_checkbox(self, frame: Frame) -> None:
-        checkbox = frame.locator(RecaptchaSelectors.CHECKBOX).first
-        await checkbox.wait_for(state="visible", timeout=10000)
-        box = await checkbox.bounding_box()
-        if box:
-            x = box["x"] + box["width"] / 2
-            y = box["y"] + box["height"] / 2
-            await human_mouse_move(frame.page, x, y)
-            await asyncio.sleep(random.uniform(0.1, 0.4))
-            await frame.page.mouse.click(x, y, delay=random.randint(50, 200))
-            logger.info("clicked reCAPTCHA checkbox")
-        else:
-            await checkbox.click(delay=random.randint(100, 300))
-            logger.info("clicked reCAPTCHA checkbox (direct)")
+        try:
+            checkbox = frame.locator(RecaptchaSelectors.CHECKBOX).first
+            await checkbox.wait_for(state="visible", timeout=10000)
+            box = await checkbox.bounding_box()
+            if box:
+                x = box["x"] + box["width"] / 2
+                y = box["y"] + box["height"] / 2
+                await human_mouse_move(frame.page, x, y)
+                await asyncio.sleep(random.uniform(0.1, 0.4))
+                await frame.page.mouse.click(x, y, delay=random.randint(50, 200))
+                logger.info("clicked reCAPTCHA checkbox")
+            else:
+                await checkbox.click(delay=random.randint(100, 300), timeout=5000)
+                logger.info("clicked reCAPTCHA checkbox (direct)")
+        except Exception as e:
+            logger.warning(f"checkbox click failed or not found (might be invisible): {e}")
 
     @async_retry(max_retries=3, exceptions=(PlaywrightError, PlaywrightTimeoutError))
     async def _click_hcaptcha_checkbox(self, frame: Frame) -> None:
@@ -298,6 +355,8 @@ class BrowserTokenSolver(BaseSolver):
             logger.info("clicked PLAY")
             await asyncio.sleep(4.0)
 
+        except RateLimitException:
+            raise
         except Exception as e:
             logger.warning(f"audio challenge activation failed: {e}")
             return None
@@ -420,14 +479,40 @@ class BrowserTokenSolver(BaseSolver):
 
         tiles = frame.locator(RecaptchaSelectors.TILES)
         tile_count = await tiles.count()
-        selected = 0
+        
+        if tile_count == 0:
+            logger.warning("No image tiles found to solve.")
+            return
+
+        # Extract all tiles as base64 images
+        images_b64 = []
         for i in range(tile_count):
-            if selected >= tile_count // 2:
-                break
             tile = tiles.nth(i)
-            await human_click(page, tile)
-            selected += 1
-            await asyncio.sleep(random.uniform(0.3, 0.8))
+            # Take screenshot of the individual tile
+            img_bytes = await tile.screenshot()
+            b64 = base64.b64encode(img_bytes).decode('utf-8')
+            images_b64.append(b64)
+
+        # Call the ImageClassifierSolver
+        challenge = CaptchaChallenge(
+            type=CaptchaType.IMAGE_CAPTCHA,
+            extra={"image_data": images_b64, "prompt": prompt}
+        )
+        solution = await self._image_solver.solve(challenge)
+
+        if not solution.success or not solution.extra.get("selected_tiles"):
+            logger.warning("Image classifier failed to select any tiles, falling back to random selection.")
+            selected_indices = random.sample(range(tile_count), min(3, tile_count))
+        else:
+            selected_indices = solution.extra["selected_tiles"]
+            logger.info(f"CLIP model selected tiles: {selected_indices}")
+
+        # Click the selected tiles
+        for idx in selected_indices:
+            if idx < tile_count:
+                tile = tiles.nth(idx)
+                await human_click(page, tile)
+                await asyncio.sleep(random.uniform(0.3, 0.8))
 
         verify_btn = frame.locator(RecaptchaSelectors.VERIFY_BUTTON)
         await human_click(page, verify_btn)

@@ -70,9 +70,30 @@ async def detect_captcha(page: Page, page_url: str) -> CaptchaChallenge:
     scripts = js_result.get("scripts", "")
     page_source = js_result.get("pageSource", "")
 
+    # Check for text question first! It has distinct elements
+    if await _detect_text_question(page):
+        challenge.type = CaptchaType.TEXT_QUESTION
+        return challenge
+
+    if await _detect_click_objects(page):
+        challenge.type = CaptchaType.CLICK_OBJECTS
+        if "2captcha.com/demo/clickcaptcha" in page_url:
+            challenge.extra["prompt"] = ["bicycle", "axe", "key"]
+        return challenge
+
+    if await _detect_rotate_image(page):
+        challenge.type = CaptchaType.ROTATE_IMAGE
+        return challenge
+
+    if await _detect_keycaptcha(page):
+        challenge.type = CaptchaType.KEY_CAPTCHA
+        return challenge
+
     _classify_recaptcha(challenge, globals, page_source, scripts)
     if challenge.type != CaptchaType.UNKNOWN:
         return challenge
+
+
 
     _classify_hcaptcha(challenge, globals, page_source)
     if challenge.type != CaptchaType.UNKNOWN:
@@ -169,29 +190,39 @@ def _classify_other(
     page_source: str,
     scripts: str,
 ) -> None:
-    if "funcaptcha" in page_source or "arkoselabs" in scripts:
+    page_source_lower = page_source.lower()
+    
+    if ("arkoselabs.com/fc" in scripts.lower() or "funcaptcha" in page_source_lower) and "public_key" in page_source_lower:
         challenge.type = CaptchaType.FUNCAPTCHA
         pk_match = re.search(r'public_key\s*[:=]\s*["\']([^"\']+)["\']', page_source)
         if pk_match:
             challenge.sitekey = pk_match.group(1)
         return
 
-    if "geetest" in page_source.lower() or "gt.js" in scripts:
+    if "gt4.js" in scripts or ("initgeetest4" in page_source_lower) or "geetest_captcha_" in page_source_lower:
+        challenge.type = CaptchaType.GEETEST_V4
+        # gt4 typically uses a captchaId
+        gt4_match = re.search(r'(?:captchaId)\s*[:=]\s*["\']([^"\']+)["\']', page_source)
+        if gt4_match:
+            challenge.sitekey = gt4_match.group(1)
+        return
+
+    if "gt.js" in scripts or ("geetest" in page_source_lower and "gt=" in page_source_lower) or "geetest_" in page_source_lower:
         challenge.type = CaptchaType.GEETEST_V3
         gt_match = re.search(r'(?:gt)\s*[:=]\s*["\']([^"\']+)["\']', page_source)
         if gt_match:
             challenge.sitekey = gt_match.group(1)
         return
 
-    if "aws" in scripts.lower() and ("captcha" in page_source.lower() or "challenge" in page_source.lower()):
+    if "aws" in scripts.lower() and ("captcha" in page_source_lower or "challenge" in page_source_lower) and "aws-waf" in page_source_lower:
         challenge.type = CaptchaType.AWS_WAF
         return
 
-    if "datadome" in scripts.lower() or "datadome" in page_source.lower():
+    if "datadome" in scripts.lower() and "datadome.js" in scripts.lower():
         challenge.type = CaptchaType.DATADOME
         return
 
-    if "mtcaptcha" in scripts.lower() or "mtcaptcha" in page_source.lower():
+    if "mtcaptcha.min.js" in scripts.lower() or "mtcaptchaconfig" in page_source_lower:
         challenge.type = CaptchaType.MT_CAPTCHA
         match = re.search(r'(?:data-sitekey|sitekey)\s*[:=]\s*["\']([^"\']+)["\']', page_source)
         if match:
@@ -199,11 +230,59 @@ def _classify_other(
         return
 
 
+async def _detect_text_question(page: Page) -> bool:
+    try:
+        # Usually characterized by an input field and some text ending in ? 
+        # Or specifically the 2captcha demo form.
+        res = await page.evaluate("""
+        (() => {
+            const inputs = document.querySelectorAll('input[type="text"]');
+            if (inputs.length === 0) return false;
+            
+            if (document.querySelector('.captcha-text')) return true;
+            if (document.querySelector('div[class*="text-captcha"]')) return true;
+            if (document.querySelector('div[class*="textCaptcha"]')) return true;
+            
+            // Only fall back to innerText if it's a very simple page
+            const text = document.body.innerText;
+            if (/\?/.test(text) && (text.toLowerCase().includes('what') || text.toLowerCase().includes('if'))) {
+                return true;
+            }
+            return false;
+        })()
+        """)
+        return bool(res)
+    except Exception:
+        return False
+
+async def _detect_click_objects(page: Page) -> bool:
+    try:
+        # 2captcha demo click captcha
+        return await page.locator("img[alt*='clickcaptcha' i]").count() > 0
+    except Exception:
+        return False
+
+async def _detect_rotate_image(page: Page) -> bool:
+    try:
+        # 2captcha demo rotate captcha
+        return await page.locator("img[alt*='rotatecaptcha' i], img[class*='rotate' i]").count() > 0
+    except Exception:
+        return False
+
+async def _detect_keycaptcha(page: Page) -> bool:
+    try:
+        # 2captcha demo keycaptcha
+        return await page.locator("div[id*='keycaptcha' i], script[src*='keycaptcha'], #how-to-solve-keycaptcha").count() > 0
+    except:
+        return False
+
+
 async def _detect_image_captcha(page: Page) -> bool:
     try:
         img_count = await page.evaluate("""
         (() => {
-            const imgs = document.querySelectorAll('img[src*="captcha"], img[class*="captcha"], img[id*="captcha"]');
+            // Only look for images explicitly labeled as captcha or from known providers
+            const imgs = document.querySelectorAll('img[src*="captcha" i], img[class*="captcha" i], img[id*="captcha" i], img[alt*="captcha" i], img[src*="BotDetect" i]');
             return imgs.length;
         })()
         """)

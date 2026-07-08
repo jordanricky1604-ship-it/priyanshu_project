@@ -69,7 +69,7 @@ class ImageClassifierSolver(BaseSolver):
     async def solve(self, challenge: CaptchaChallenge) -> CaptchaSolution:
         start = time.time()
         try:
-            image_data = challenge.extra.get("image_data", "")
+            image_data = challenge.extra.get("image_data")
             prompt = challenge.extra.get("prompt", "")
             grid_size = challenge.extra.get("grid_size", 9)
 
@@ -80,8 +80,14 @@ class ImageClassifierSolver(BaseSolver):
                     error="no image_data in challenge.extra",
                 )
 
-            img = decode_image(image_data)
-            selected_tiles = self._classify_grid(img, prompt, grid_size)
+            if isinstance(image_data, list):
+                # Pre-sliced tiles (e.g. from individual element screenshots)
+                images = [decode_image(b64) for b64 in image_data]
+                selected_tiles = self._classify_tiles(images, prompt)
+            else:
+                # Single grid image that needs cropping
+                img = decode_image(image_data)
+                selected_tiles = self._classify_grid(img, prompt, grid_size)
 
             elapsed = (time.time() - start) * 1000
             result = ",".join(str(t) for t in selected_tiles)
@@ -132,6 +138,32 @@ class ImageClassifierSolver(BaseSolver):
             tile = img.crop(
                 (col * tile_w, row * tile_h, (col + 1) * tile_w, (row + 1) * tile_h)
             )
+            tile = preprocess(tile).unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                image_features = model.encode_image(tile)
+                image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+                similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
+                best_idx = similarity[0].argmax().item()
+
+            if best_idx < len(labels) - 1 and similarity[0][best_idx] > 0.15:
+                selected.append(idx)
+
+        return selected
+
+    def _classify_tiles(self, images: list[Image.Image], prompt: str) -> list[int]:
+        import torch
+        model, preprocess, tokenizer, device = self.model_manager.get_clip()
+
+        labels = self._get_labels_for_prompt(prompt)
+        text_tokens = tokenizer(labels).to(device)
+
+        with torch.no_grad():
+            text_features = model.encode_text(text_tokens)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+
+        selected = []
+        for idx, tile in enumerate(images):
             tile = preprocess(tile).unsqueeze(0).to(device)
 
             with torch.no_grad():
