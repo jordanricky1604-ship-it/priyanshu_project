@@ -146,23 +146,32 @@ class BrowserImageSolver(BaseSolver):
             # Wait a tiny bit just to ensure events fire
             await asyncio.sleep(0.5)
             
-            # 6. Verify result if on a known demo page
+            # 6. Verify result if on a known demo page or general form
             try:
-                submit_btn = page.locator("button[type='submit'], input[type='submit'], input[type='button'][value*='Check' i], input[type='button'][value*='Validate' i], button:has-text('Check'), button:has-text('Validate')").first
+                # Try pressing Enter to submit
+                try:
+                    await input_locator.press("Enter", timeout=1000)
+                except Exception:
+                    pass
+                
+                # Also try to click submit buttons in case Enter didn't work
+                submit_btn = page.locator("button[type='submit'], input[type='submit'], input[type='button'][value*='Check' i], input[type='button'][value*='Validate' i], button:has-text('Check'), button:has-text('Validate'), button:has-text('Eintragen'), button:has-text('Submit')").first
                 if await submit_btn.is_visible(timeout=1000):
                     await submit_btn.click()
-                    await asyncio.sleep(2.0)
-                    
-                    # Check for failure text
-                    body_text = await page.evaluate("document.body.innerText")
-                    body_lower = body_text.lower()
-                    if "incorrect" in body_lower or "failed" in body_lower or "wrong" in body_lower:
-                        return CaptchaSolution(
-                            type=CaptchaType.IMAGE_CAPTCHA,
-                            success=False,
-                            error=f"OCR extracted '{text}' but the website rejected it as incorrect.",
-                            elapsed_ms=(time.time() - start) * 1000,
-                        )
+                
+                await asyncio.sleep(2.0)
+                
+                # Check for failure text in various languages
+                body_text = await page.evaluate("document.body.innerText")
+                body_lower = body_text.lower()
+                error_keywords = ["incorrect", "failed", "wrong", "falsch", "fehler", "ungültig", "invalid"]
+                if any(kw in body_lower for kw in error_keywords):
+                    return CaptchaSolution(
+                        type=CaptchaType.IMAGE_CAPTCHA,
+                        success=False,
+                        error=f"OCR extracted '{text}' but the website rejected it as incorrect.",
+                        elapsed_ms=(time.time() - start) * 1000,
+                    )
             except Exception:
                 pass
             
